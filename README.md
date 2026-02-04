@@ -35,6 +35,8 @@ For production‑grade environments, the recommended approach is:
 
 > **EC2 + Oracle Linux 9 + classic Oracle installation (RPM or OUI)**
 
+<img width="1590" height="782" alt="Screenshot 2026-02-04 at 10 00 01 AM" src="https://github.com/user-attachments/assets/8f32374c-ec7a-40f3-a778-f26e9a332944" />
+
 ---
 
 ## 2. EC2 Instance Provisioning
@@ -88,6 +90,9 @@ Open only the required ports:
 ---
 
 ## 4. Operating System Preparation (Oracle Linux 9)
+
+<img width="1115" height="840" alt="Screenshot 2026-02-04 at 9 59 33 AM" src="https://github.com/user-attachments/assets/e8ef0700-e387-4901-b55d-c2178755a982" />
+
 
 Update the system:
 

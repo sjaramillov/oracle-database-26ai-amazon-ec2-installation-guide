@@ -1,0 +1,691 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Oracle Database 26ai Enterprise Edition on EC2 (Oracle Linux 9)
+  Automated deployment with OUI silent install + DBCA silent configuration
+  Author: Sebas Jaramillo - Enhanced with AWS Best Practices
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VpcId
+          - SubnetId
+          - AllowedCidrBlocks
+      - Label:
+          default: "EC2 Instance Configuration"
+        Parameters:
+          - InstanceType
+          - AmiId
+          - KeyName
+      - Label:
+          default: "Oracle Software Source"
+        Parameters:
+          - S3Bucket
+          - S3ObjectKey
+      - Label:
+          default: "Database Credentials (Secure)"
+        Parameters:
+          - DbSysPassword
+          - DbSystemPassword
+          - DbPdbAdminPassword
+      - Label:
+          default: "Storage Configuration (EBS Volumes)"
+        Parameters:
+          - VolumeSizeOS
+          - VolumeSizeU01
+          - VolumeSizeU02
+          - VolumeSizeU03
+          - VolumeSizeU04
+      - Label:
+          default: "Database Configuration"
+        Parameters:
+          - CdbName
+          - PdbName
+          - OracleSid
+          - CharacterSet
+          - MemoryPercentage
+      - Label:
+          default: "Resource Tagging"
+        Parameters:
+          - Environment
+          - Project
+
+Parameters:
+  # === Network ===
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC donde se desplegará la instancia Oracle
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet privada recomendada para la base de datos
+
+  AllowedCidrBlocks:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR blocks permitidos para acceso a Oracle Listener (puerto 1521)
+    AllowedPattern: ^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$
+
+  # === EC2 ===
+  InstanceType:
+    Type: String
+    Default: m6i.xlarge
+    Description: Tipo de instancia EC2 (EBS-optimized requerido)
+    AllowedValues:
+      - m6i.large
+      - m6i.xlarge
+      - m6i.2xlarge
+      - m7i.large
+      - m7i.xlarge
+      - m7i.2xlarge
+      - r6i.large
+      - r6i.xlarge
+      - r6i.2xlarge
+
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: Oracle Linux 9 AMI ID (usa la oficial de Oracle)
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Key pair SSH para acceso administrativo
+
+  # === Oracle Software ===
+  S3Bucket:
+    Type: String
+    Description: Bucket S3 que contiene el software Oracle 26ai
+    AllowedPattern: ^[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]$
+
+  S3ObjectKey:
+    Type: String
+    Default: software/oracle/LINUX.X64_26AI_DB_HOME.zip
+    Description: Ruta completa del archivo ZIP en S3
+
+  # === Database Credentials ===
+  DbSysPassword:
+    NoEcho: true
+    Type: String
+    MinLength: 12
+    MaxLength: 30
+    Description: Password para usuario SYS (mínimo 12 caracteres)
+    AllowedPattern: ^[a-zA-Z0-9#_$]+$
+
+  DbSystemPassword:
+    NoEcho: true
+    Type: String
+    MinLength: 12
+    MaxLength: 30
+    Description: Password para usuario SYSTEM (mínimo 12 caracteres)
+    AllowedPattern: ^[a-zA-Z0-9#_$]+$
+
+  DbPdbAdminPassword:
+    NoEcho: true
+    Type: String
+    MinLength: 12
+    MaxLength: 30
+    Description: Password para PDB Admin (mínimo 12 caracteres)
+    AllowedPattern: ^[a-zA-Z0-9#_$]+$
+
+  # === Storage ===
+  VolumeSizeOS:
+    Type: Number
+    Default: 60
+    MinValue: 50
+    MaxValue: 500
+    Description: Tamaño del volumen OS en GB (root)
+
+  VolumeSizeU01:
+    Type: Number
+    Default: 120
+    MinValue: 100
+    MaxValue: 1000
+    Description: Tamaño de /u01 (Oracle software) en GB
+
+  VolumeSizeU02:
+    Type: Number
+    Default: 200
+    MinValue: 100
+    MaxValue: 2000
+    Description: Tamaño de /u02 (Datafiles) en GB
+
+  VolumeSizeU03:
+    Type: Number
+    Default: 50
+    MinValue: 20
+    MaxValue: 500
+    Description: Tamaño de /u03 (Redo logs) en GB
+
+  VolumeSizeU04:
+    Type: Number
+    Default: 100
+    MinValue: 50
+    MaxValue: 1000
+    Description: Tamaño de /u04 (Fast Recovery Area) en GB
+
+  # === Database Config ===
+  CdbName:
+    Type: String
+    Default: CDB26AI
+    Description: Nombre del Container Database
+    AllowedPattern: ^[A-Z][A-Z0-9]{0,7}$
+
+  PdbName:
+    Type: String
+    Default: PDB26AI1
+    Description: Nombre del Pluggable Database
+    AllowedPattern: ^[A-Z][A-Z0-9]{0,7}$
+
+  OracleSid:
+    Type: String
+    Default: CDB26AI
+    Description: Oracle SID (debe coincidir con CdbName)
+    AllowedPattern: ^[A-Z][A-Z0-9]{0,7}$
+
+  CharacterSet:
+    Type: String
+    Default: AL32UTF8
+    AllowedValues:
+      - AL32UTF8
+      - UTF8
+    Description: Character set de la base de datos
+
+  MemoryPercentage:
+    Type: Number
+    Default: 40
+    MinValue: 20
+    MaxValue: 80
+    Description: Porcentaje de memoria RAM asignado a Oracle SGA
+
+  # === Tagging ===
+  Environment:
+    Type: String
+    Default: Development
+    AllowedValues:
+      - Development
+      - QA
+      - Staging
+      - Production
+    Description: Ambiente de despliegue
+
+  Project:
+    Type: String
+    Default: Oracle26AI-Migration
+    Description: Nombre del proyecto para tagging
+
+Resources:
+  # === IAM Role para EC2 ===
+  OracleInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-OracleEC2Role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: OracleS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowOracleSoftwareDownload
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${S3Bucket}'
+                  - !Sub 'arn:aws:s3:::${S3Bucket}/${S3ObjectKey}'
+              - Sid: AllowBackupsToS3
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${S3Bucket}/backups/*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-OracleRole'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+
+  OracleInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${AWS::StackName}-OracleProfile'
+      Roles:
+        - !Ref OracleInstanceRole
+
+  # === Security Group ===
+  OracleDbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${AWS::StackName}-Oracle-SG'
+      GroupDescription: Security Group para Oracle Database 26ai en EC2
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedCidrBlocks
+          Description: SSH desde red autorizada
+        - IpProtocol: tcp
+          FromPort: 1521
+          ToPort: 1521
+          CidrIp: !Ref AllowedCidrBlocks
+          Description: Oracle Listener
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Permitir todo el tráfico de salida
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-Oracle-SG'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+
+  # === EC2 Instance ===
+  OracleDbInstance:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - OracleInstanceProfile
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SubnetId: !Ref SubnetId
+      IamInstanceProfile: !Ref OracleInstanceProfile
+      SecurityGroupIds:
+        - !Ref OracleDbSecurityGroup
+      EbsOptimized: true
+      Monitoring: true
+      BlockDeviceMappings:
+        # Root volume (OS)
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref VolumeSizeOS
+            VolumeType: gp3
+            Iops: 3000
+            Throughput: 125
+            DeleteOnTermination: true
+            Encrypted: true
+        # /u01 - Oracle software
+        - DeviceName: /dev/xvdb
+          Ebs:
+            VolumeSize: !Ref VolumeSizeU01
+            VolumeType: gp3
+            Iops: 3000
+            Throughput: 125
+            DeleteOnTermination: false
+            Encrypted: true
+        # /u02 - Datafiles
+        - DeviceName: /dev/xvdc
+          Ebs:
+            VolumeSize: !Ref VolumeSizeU02
+            VolumeType: gp3
+            Iops: 10000
+            Throughput: 500
+            DeleteOnTermination: false
+            Encrypted: true
+        # /u03 - Redo logs
+        - DeviceName: /dev/xvdd
+          Ebs:
+            VolumeSize: !Ref VolumeSizeU03
+            VolumeType: gp3
+            Iops: 5000
+            Throughput: 250
+            DeleteOnTermination: false
+            Encrypted: true
+        # /u04 - Fast Recovery Area
+        - DeviceName: /dev/xvde
+          Ebs:
+            VolumeSize: !Ref VolumeSizeU04
+            VolumeType: gp3
+            Iops: 3000
+            Throughput: 125
+            DeleteOnTermination: false
+            Encrypted: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          # ========================================
+          # Oracle Database 26ai Automated Installation
+          # CloudFormation Stack: ${AWS::StackName}
+          # ========================================
+          
+          exec > >(tee /var/log/oracle-install.log)
+          exec 2>&1
+          
+          echo "=== Starting Oracle 26ai installation at $(date) ==="
+          
+          # === 1. System Update and Prerequisites ===
+          echo "Step 1: Updating system and installing prerequisites..."
+          dnf -y update
+          dnf -y install wget zip unzip xfsprogs awscli python3-pip jq
+          
+          # Install CloudFormation helper scripts
+          pip3 install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz
+          
+          # === 2. Disk Preparation ===
+          echo "Step 2: Preparing EBS volumes..."
+          sleep 10  # Wait for volumes to attach
+          
+          for dev in xvdb xvdc xvdd xvde; do
+            if [ -b /dev/${!dev} ]; then
+              echo "Creating partition on /dev/${!dev}..."
+              parted /dev/${!dev} --script mklabel gpt mkpart primary 0% 100%
+              mkfs.xfs -f /dev/${!dev}1
+            fi
+          done
+          
+          # Create mount points
+          mkdir -p /u01 /u02 /u03 /u04
+          
+          # Add to fstab
+          echo "UUID=$(blkid -s UUID -o value /dev/xvdb1) /u01 xfs defaults,nofail 0 0" >> /etc/fstab
+          echo "UUID=$(blkid -s UUID -o value /dev/xvdc1) /u02 xfs defaults,nofail 0 0" >> /etc/fstab
+          echo "UUID=$(blkid -s UUID -o value /dev/xvdd1) /u03 xfs defaults,nofail 0 0" >> /etc/fstab
+          echo "UUID=$(blkid -s UUID -o value /dev/xvde1) /u04 xfs defaults,nofail 0 0" >> /etc/fstab
+          
+          mount -a
+          
+          # Verify mounts
+          df -h | grep /u0
+          
+          # === 3. Hostname Configuration ===
+          echo "Step 3: Configuring hostname..."
+          PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+          HOSTNAME="oracle-${!PRIVATE_IP//./-}"
+          hostnamectl set-hostname ${!HOSTNAME}
+          echo "${!PRIVATE_IP} ${!HOSTNAME}.ec2.internal ${!HOSTNAME}" >> /etc/hosts
+          
+          # === 4. Oracle Preinstall Package ===
+          echo "Step 4: Installing Oracle 26ai preinstall package..."
+          curl -o /tmp/oracle-ai-database-preinstall-26ai.rpm \
+            https://yum.oracle.com/repo/OracleLinux/OL9/appstream/x86_64/getPackage/oracle-ai-database-preinstall-26ai-1.0-1.el9.x86_64.rpm
+          
+          dnf -y localinstall /tmp/oracle-ai-database-preinstall-26ai.rpm
+          
+          # === 5. Oracle Directory Structure ===
+          echo "Step 5: Creating Oracle directory structure..."
+          mkdir -p /u01/app/oracle/product/26ai/dbhome_1
+          mkdir -p /u01/app/oraInventory
+          mkdir -p /u02/oradata
+          mkdir -p /u03/redolog
+          mkdir -p /u04/fra
+          mkdir -p /u01/software
+          mkdir -p /u01/scripts
+          
+          chown -R oracle:oinstall /u01 /u02 /u03 /u04
+          chmod -R 775 /u01 /u02 /u03 /u04
+          
+          # === 6. Download Oracle Software from S3 ===
+          echo "Step 6: Downloading Oracle 26ai software from S3..."
+          su - oracle -c "
+          aws s3 cp s3://${S3Bucket}/${S3ObjectKey} /u01/software/LINUX.X64_26AI_DB_HOME.zip
+          "
+          
+          if [ ! -f /u01/software/LINUX.X64_26AI_DB_HOME.zip ]; then
+            echo "ERROR: Failed to download Oracle software from S3"
+            /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource OracleDbInstance --region ${AWS::Region}
+            exit 1
+          fi
+          
+          # === 7. Unzip Oracle Software ===
+          echo "Step 7: Extracting Oracle software..."
+          su - oracle -c "
+          cd /u01/app/oracle/product/26ai/dbhome_1
+          unzip -q /u01/software/LINUX.X64_26AI_DB_HOME.zip
+          "
+          
+          # === 8. Create OUI Response File ===
+          echo "Step 8: Creating silent installation response file..."
+          cat > /u01/software/db_install.rsp << 'EOFRESPONSE'
+          oracle.install.responseFileVersion=/oracle/install/rspfmt_dbinstall_response_schema_v26.0.0
+          oracle.install.option=INSTALL_DB_SWONLY
+          UNIX_GROUP_NAME=oinstall
+          INVENTORY_LOCATION=/u01/app/oraInventory
+          ORACLE_HOME=/u01/app/oracle/product/26ai/dbhome_1
+          ORACLE_BASE=/u01/app/oracle
+          oracle.install.db.InstallEdition=EE
+          oracle.install.db.OSDBA_GROUP=dba
+          oracle.install.db.OSOPER_GROUP=oper
+          oracle.install.db.OSBACKUPDBA_GROUP=backupdba
+          oracle.install.db.OSDGDBA_GROUP=dgdba
+          oracle.install.db.OSKMDBA_GROUP=kmdba
+          oracle.install.db.OSRACDBA_GROUP=racdba
+          DECLINE_SECURITY_UPDATES=true
+          EOFRESPONSE
+          
+          chown oracle:oinstall /u01/software/db_install.rsp
+          
+          # === 9. Run Oracle Installer ===
+          echo "Step 9: Running Oracle Universal Installer (silent mode)..."
+          su - oracle -c "
+          export ORACLE_HOME=/u01/app/oracle/product/26ai/dbhome_1
+          cd \$ORACLE_HOME
+          ./runInstaller -silent -responseFile /u01/software/db_install.rsp -ignorePrereqFailure -waitforcompletion
+          "
+          
+          # === 10. Execute Root Scripts ===
+          echo "Step 10: Executing Oracle root scripts..."
+          /u01/app/oraInventory/orainstRoot.sh
+          /u01/app/oracle/product/26ai/dbhome_1/root.sh
+          
+          # === 11. Create Database with DBCA ===
+          echo "Step 11: Creating database with DBCA (silent mode)..."
+          su - oracle -c "
+          export ORACLE_BASE=/u01/app/oracle
+          export ORACLE_HOME=/u01/app/oracle/product/26ai/dbhome_1
+          export ORACLE_SID=${OracleSid}
+          export PATH=\$ORACLE_HOME/bin:\$PATH
+          
+          dbca -silent -createDatabase \
+            -templateName General_Purpose.dbc \
+            -gdbName ${CdbName} \
+            -sid ${OracleSid} \
+            -createAsContainerDatabase true \
+            -numberOfPDBs 1 \
+            -pdbName ${PdbName} \
+            -sysPassword '${DbSysPassword}' \
+            -systemPassword '${DbSystemPassword}' \
+            -pdbAdminPassword '${DbPdbAdminPassword}' \
+            -characterSet ${CharacterSet} \
+            -nationalCharacterSet AL16UTF16 \
+            -memoryMgmtType auto_sga \
+            -memoryPercentage ${MemoryPercentage} \
+            -emConfiguration NONE \
+            -storageType FS \
+            -datafileDestination /u02/oradata \
+            -redoLogFileSize 200 \
+            -recoveryAreaDestination /u04/fra \
+            -recoveryAreaSize 50 \
+            -ignorePreReqs
+          "
+          
+          # === 12. Configure Listener ===
+          echo "Step 12: Configuring Oracle Listener..."
+          su - oracle -c "
+          export ORACLE_HOME=/u01/app/oracle/product/26ai/dbhome_1
+          export PATH=\$ORACLE_HOME/bin:\$PATH
+          
+          lsnrctl stop || true
+          lsnrctl start
+          lsnrctl status
+          "
+          
+          # === 13. Set Oracle Environment Variables ===
+          echo "Step 13: Configuring Oracle environment..."
+          su - oracle -c "cat >> ~/.bash_profile << 'EOFPROFILE'
+          # Oracle Environment Variables
+          export ORACLE_BASE=/u01/app/oracle
+          export ORACLE_HOME=/u01/app/oracle/product/26ai/dbhome_1
+          export ORACLE_SID=${OracleSid}
+          export PATH=\$ORACLE_HOME/bin:\$PATH
+          export LD_LIBRARY_PATH=\$ORACLE_HOME/lib:\$LD_LIBRARY_PATH
+          export CLASSPATH=\$ORACLE_HOME/jlib:\$ORACLE_HOME/rdbms/jlib
+          EOFPROFILE
+          "
+          
+          # === 14. Create Autostart Service ===
+          echo "Step 14: Creating systemd service for Oracle..."
+          cat > /etc/systemd/system/oracle-database.service << 'EOFSERVICE'
+          [Unit]
+          Description=Oracle Database 26ai
+          After=network.target
+          
+          [Service]
+          Type=forking
+          User=oracle
+          Group=oinstall
+          ExecStart=/u01/scripts/oracle-start.sh
+          ExecStop=/u01/scripts/oracle-stop.sh
+          RemainAfterExit=yes
+          
+          [Install]
+          WantedBy=multi-user.target
+          EOFSERVICE
+          
+          # Create startup script
+          cat > /u01/scripts/oracle-start.sh << 'EOFSTART'
+          #!/bin/bash
+          export ORACLE_BASE=/u01/app/oracle
+          export ORACLE_HOME=/u01/app/oracle/product/26ai/dbhome_1
+          export ORACLE_SID=${OracleSid}
+          export PATH=\$ORACLE_HOME/bin:\$PATH
+          
+          lsnrctl start
+          sqlplus / as sysdba << EOF
+          STARTUP;
+          ALTER PLUGGABLE DATABASE ALL OPEN;
+          EXIT;
+          EOF
+          EOFSTART
+          
+          # Create shutdown script
+          cat > /u01/scripts/oracle-stop.sh << 'EOFSTOP'
+          #!/bin/bash
+          export ORACLE_BASE=/u01/app/oracle
+          export ORACLE_HOME=/u01/app/oracle/product/26ai/dbhome_1
+          export ORACLE_SID=${OracleSid}
+          export PATH=\$ORACLE_HOME/bin:\$PATH
+          
+          sqlplus / as sysdba << EOF
+          ALTER PLUGGABLE DATABASE ALL CLOSE IMMEDIATE;
+          SHUTDOWN IMMEDIATE;
+          EXIT;
+          EOF
+          lsnrctl stop
+          EOFSTOP
+          
+          chmod +x /u01/scripts/*.sh
+          chown oracle:oinstall /u01/scripts/*.sh
+          
+          systemctl daemon-reload
+          systemctl enable oracle-database
+          
+          # === 15. Validation ===
+          echo "Step 15: Validating installation..."
+          su - oracle -c "
+          export ORACLE_SID=${OracleSid}
+          export ORACLE_HOME=/u01/app/oracle/product/26ai/dbhome_1
+          export PATH=\$ORACLE_HOME/bin:\$PATH
+          
+          sqlplus -s / as sysdba << 'EOFSQL'
+          SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+          SELECT 'Database Version: ' || banner FROM v\$version WHERE ROWNUM = 1;
+          SELECT 'Database Name: ' || name FROM v\$database;
+          SELECT 'Database Status: ' || status FROM v\$instance;
+          SELECT 'PDB Status: ' || name || ' - ' || open_mode FROM v\$pdbs;
+          EXIT;
+          EOFSQL
+          " > /tmp/db-validation.log
+          
+          cat /tmp/db-validation.log
+          
+          # === 16. Signal CloudFormation ===
+          echo "=== Installation completed successfully at $(date) ==="
+          /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --resource OracleDbInstance --region ${AWS::Region}
+          
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-Oracle-26ai'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+        - Key: Database
+          Value: Oracle-26ai
+        - Key: ManagedBy
+          Value: CloudFormation
+
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT90M
+
+  # === CloudWatch Log Group ===
+  OracleLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/ec2/${AWS::StackName}/oracle'
+      RetentionInDays: 30
+
+Outputs:
+  InstanceId:
+    Description: ID de la instancia EC2 Oracle
+    Value: !Ref OracleDbInstance
+    Export:
+      Name: !Sub '${AWS::StackName}-InstanceId'
+
+  PrivateIp:
+    Description: IP privada de la instancia Oracle
+    Value: !GetAtt OracleDbInstance.PrivateIp
+    Export:
+      Name: !Sub '${AWS::StackName}-PrivateIp'
+
+  CdbConnectString:
+    Description: Connection string para el Container Database (CDB)
+    Value: !Sub '//${OracleDbInstance.PrivateIp}:1521/${CdbName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-CDB-ConnectString'
+
+  PdbConnectString:
+    Description: Connection string para el Pluggable Database (PDB)
+    Value: !Sub '//${OracleDbInstance.PrivateIp}:1521/${PdbName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-PDB-ConnectString'
+
+  SecurityGroupId:
+    Description: Security Group ID para la instancia Oracle
+    Value: !Ref OracleDbSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-SecurityGroupId'
+
+  OracleHome:
+    Description: Ruta de Oracle Home
+    Value: /u01/app/oracle/product/26ai/dbhome_1
+
+  InstallationLog:
+    Description: Log de instalación
+    Value: /var/log/oracle-install.log
+
+  SSHCommand:
+    Description: Comando SSH para conectarse a la instancia
+    Value: !Sub 'ssh -i ${KeyName}.pem ec2-user@${OracleDbInstance.PrivateIp}'
+
+  SqlPlusCommand:
+    Description: Comando para conectarse con SQL*Plus
+    Value: !Sub 'sqlplus sys/${DbSysPassword}@${OracleDbInstance.PrivateIp}:1521/${CdbName} as sysdba'

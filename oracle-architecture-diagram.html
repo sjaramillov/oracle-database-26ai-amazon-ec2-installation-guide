@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oracle 26ai on AWS EC2 - Architecture</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Montserrat:wght@700;900&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 40px 20px;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .header h1 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 3.5rem;
+            font-weight: 900;
+            background: linear-gradient(90deg, #ff6b35, #f7931e, #ffd700);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            color: #a0a0a0;
+            letter-spacing: 1px;
+        }
+        
+        .architecture-wrapper {
+            background: rgba(30, 30, 50, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 50px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            animation: fadeIn 1s ease-out;
+        }
+        
+        .aws-cloud {
+            border: 3px dashed #ff9900;
+            border-radius: 15px;
+            padding: 40px;
+            position: relative;
+            background: rgba(255, 153, 0, 0.05);
+        }
+        
+        .cloud-label {
+            position: absolute;
+            top: -15px;
+            left: 30px;
+            background: #ff9900;
+            color: #000;
+            padding: 5px 20px;
+            font-weight: 700;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+        }
+        
+        .vpc-container {
+            border: 2px solid #00d4aa;
+            border-radius: 12px;
+            padding: 35px;
+            background: rgba(0, 212, 170, 0.05);
+            position: relative;
+            margin-top: 20px;
+        }
+        
+        .vpc-label {
+            position: absolute;
+            top: -12px;
+            left: 25px;
+            background: #00d4aa;
+            color: #000;
+            padding: 4px 16px;
+            font-weight: 700;
+            border-radius: 15px;
+            font-size: 0.85rem;
+        }
+        
+        .subnet {
+            border: 2px solid #5a67d8;
+            border-radius: 10px;
+            padding: 30px;
+            background: rgba(90, 103, 216, 0.08);
+            position: relative;
+        }
+        
+        .subnet-label {
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: #5a67d8;
+            color: #fff;
+            padding: 4px 14px;
+            font-weight: 600;
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+        
+        .components-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin-top: 25px;
+        }
+        
+        .component {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 25px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .component::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.5s ease;
+        }
+        
+        .component:hover::before {
+            left: 100%;
+        }
+        
+        .component:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(255, 107, 53, 0.3);
+            border-color: #ff6b35;
+        }
+        
+        .component-icon {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .component-title {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #fff;
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+        }
+        
+        .component-details {
+            font-size: 0.85rem;
+            color: #b0b0b0;
+            line-height: 1.6;
+        }
+        
+        .storage-section {
+            margin-top: 30px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .storage-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #ffd700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .storage-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .storage-volume {
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            color: #000;
+            font-weight: 600;
+            transition: transform 0.3s ease;
+        }
+        
+        .storage-volume:hover {
+            transform: scale(1.05);
+        }
+        
+        .volume-name {
+            font-size: 1rem;
+            margin-bottom: 8px;
+        }
+        
+        .volume-size {
+            font-size: 1.5rem;
+            font-weight: 900;
+        }
+        
+        .volume-type {
+            font-size: 0.75rem;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+        
+        .security-section {
+            margin-top: 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .security-box {
+            background: rgba(255, 107, 53, 0.1);
+            border: 2px solid #ff6b35;
+            border-radius: 10px;
+            padding: 20px;
+        }
+        
+        .security-title {
+            font-weight: 700;
+            color: #ff6b35;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .security-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            border-left: 3px solid #ff6b35;
+        }
+        
+        .flow-section {
+            margin-top: 40px;
+            text-align: center;
+        }
+        
+        .flow-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #00d4aa;
+            margin-bottom: 25px;
+        }
+        
+        .flow-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .flow-step {
+            flex: 1;
+            min-width: 150px;
+            background: linear-gradient(135deg, rgba(0, 212, 170, 0.2), rgba(90, 103, 216, 0.2));
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+        }
+        
+        .flow-step::after {
+            content: '→';
+            position: absolute;
+            right: -25px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 2rem;
+            color: #00d4aa;
+        }
+        
+        .flow-step:last-child::after {
+            display: none;
+        }
+        
+        .step-number {
+            background: #00d4aa;
+            color: #000;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 10px;
+            font-weight: 900;
+            font-size: 1.1rem;
+        }
+        
+        .step-text {
+            font-size: 0.85rem;
+            color: #e0e0e0;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .legend {
+            margin-top: 40px;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 25px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .legend-title {
+            font-weight: 700;
+            font-size: 1.2rem;
+            color: #ffd700;
+            margin-bottom: 15px;
+        }
+        
+        .legend-items {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .legend-color {
+            width: 30px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .architecture-wrapper {
+                padding: 25px;
+            }
+            
+            .security-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .flow-steps {
+                flex-direction: column;
+            }
+            
+            .flow-step::after {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Oracle 26ai on AWS</h1>
+            <p>Enterprise Architecture Deployment</p>
+        </div>
+        
+        <div class="architecture-wrapper">
+            <div class="aws-cloud">
+                <div class="cloud-label">☁️ AWS Cloud</div>
+                
+                <div class="vpc-container">
+                    <div class="vpc-label">🌐 VPC</div>
+                    
+                    <div class="subnet">
+                        <div class="subnet-label">🔒 Private Subnet</div>
+                        
+                        <div class="components-grid">
+                            <div class="component">
+                                <span class="component-icon">🖥️</span>
+                                <div class="component-title">EC2 Instance</div>
+                                <div class="component-details">
+                                    • m6i.xlarge (EBS-optimized)<br>
+                                    • Oracle Linux 9<br>
+                                    • Enhanced Monitoring
+                                </div>
+                            </div>
+                            
+                            <div class="component">
+                                <span class="component-icon">🗄️</span>
+                                <div class="component-title">Oracle 26ai Database</div>
+                                <div class="component-details">
+                                    • Enterprise Edition<br>
+                                    • Multitenant (CDB + PDB)<br>
+                                    • AL32UTF8 charset
+                                </div>
+                            </div>
+                            
+                            <div class="component">
+                                <span class="component-icon">🛡️</span>
+                                <div class="component-title">Security Group</div>
+                                <div class="component-details">
+                                    • Port 22 (SSH)<br>
+                                    • Port 1521 (Listener)<br>
+                                    • CIDR-restricted
+                                </div>
+                            </div>
+                            
+                            <div class="component">
+                                <span class="component-icon">🔑</span>
+                                <div class="component-title">IAM Role</div>
+                                <div class="component-details">
+                                    • S3 software access<br>
+                                    • CloudWatch logs<br>
+                                    • SSM access
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="storage-section">
+                            <div class="storage-title">
+                                💾 EBS Storage Architecture
+                            </div>
+                            <div class="storage-grid">
+                                <div class="storage-volume">
+                                    <div class="volume-name">/dev/xvda</div>
+                                    <div class="volume-size">60 GB</div>
+                                    <div class="volume-type">OS Root • gp3</div>
+                                </div>
+                                <div class="storage-volume">
+                                    <div class="volume-name">/u01</div>
+                                    <div class="volume-size">120 GB</div>
+                                    <div class="volume-type">Oracle Software • gp3</div>
+                                </div>
+                                <div class="storage-volume">
+                                    <div class="volume-name">/u02</div>
+                                    <div class="volume-size">200 GB</div>
+                                    <div class="volume-type">Datafiles • gp3 • 10K IOPS</div>
+                                </div>
+                                <div class="storage-volume">
+                                    <div class="volume-name">/u03</div>
+                                    <div class="volume-size">50 GB</div>
+                                    <div class="volume-type">Redo Logs • gp3 • 5K IOPS</div>
+                                </div>
+                                <div class="storage-volume">
+                                    <div class="volume-name">/u04</div>
+                                    <div class="volume-size">100 GB</div>
+                                    <div class="volume-type">FRA Backups • gp3</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="security-section">
+                            <div class="security-box">
+                                <div class="security-title">🔐 Security Features</div>
+                                <div class="security-item">✓ EBS Encryption at Rest</div>
+                                <div class="security-item">✓ Security Groups (Network ACL)</div>
+                                <div class="security-item">✓ IAM Instance Profile</div>
+                                <div class="security-item">✓ Private Subnet Deployment</div>
+                                <div class="security-item">✓ Password Complexity (12+ chars)</div>
+                            </div>
+                            
+                            <div class="security-box">
+                                <div class="security-title">📊 Monitoring & Logging</div>
+                                <div class="security-item">✓ CloudWatch Detailed Monitoring</div>
+                                <div class="security-item">✓ Installation Logs (/var/log)</div>
+                                <div class="security-item">✓ Oracle Alert Logs</div>
+                                <div class="security-item">✓ CloudFormation Signals</div>
+                                <div class="security-item">✓ SystemD Service Management</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flow-section">
+                    <div class="flow-title">⚡ Automated Installation Flow</div>
+                    <div class="flow-steps">
+                        <div class="flow-step">
+                            <div class="step-number">1</div>
+                            <div class="step-text">CloudFormation Launch</div>
+                        </div>
+                        <div class="flow-step">
+                            <div class="step-number">2</div>
+                            <div class="step-text">EC2 Provisioning</div>
+                        </div>
+                        <div class="flow-step">
+                            <div class="step-number">3</div>
+                            <div class="step-text">EBS Volumes Setup</div>
+                        </div>
+                        <div class="flow-step">
+                            <div class="step-number">4</div>
+                            <div class="step-text">Oracle Preinstall</div>
+                        </div>
+                        <div class="flow-step">
+                            <div class="step-number">5</div>
+                            <div class="step-text">S3 Software Download</div>
+                        </div>
+                        <div class="flow-step">
+                            <div class="step-number">6</div>
+                            <div class="step-text">OUI Silent Install</div>
+                        </div>
+                        <div class="flow-step">
+                            <div class="step-number">7</div>
+                            <div class="step-text">DBCA Database Creation</div>
+                        </div>
+                        <div class="flow-step">
+                            <div class="step-number">8</div>
+                            <div class="step-text">Validation & Ready</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="legend">
+                <div class="legend-title">🎨 Component Legend</div>
+                <div class="legend-items">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #ff9900;"></div>
+                        <span>AWS Cloud</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #00d4aa;"></div>
+                        <span>VPC Network</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #5a67d8;"></div>
+                        <span>Private Subnet</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: linear-gradient(135deg, #ff6b35, #f7931e);"></div>
+                        <span>EBS Volumes</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(255, 107, 53, 0.3); border: 2px solid #ff6b35;"></div>
+                        <span>Security Layer</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

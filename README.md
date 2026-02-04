@@ -2,7 +2,7 @@
 
 This repository documents a **step-by-step installation guide for Oracle Database 26ai on Amazon EC2**, following an on‑prem–style deployment model with AWS best practices for compute, storage, networking, and licensing.
 
-The approach is suitable for **Enterprise / Standard licensed environments** as well as **Oracle Database 26ai Free** for labs and proofs of concept.
+The approach is suitable for **Enterprise licensed environments** as well as **Oracle Database 26ai Free** for labs and proofs of concept.
 
 ---
 

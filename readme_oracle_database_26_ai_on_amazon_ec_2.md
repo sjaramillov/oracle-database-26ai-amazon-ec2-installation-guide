@@ -244,5 +244,5 @@ Possible extensions:
 
 ---
 
-**Author:** Oracle on AWS Installation Guide
+**Author:** Sebas Jaramillo
 

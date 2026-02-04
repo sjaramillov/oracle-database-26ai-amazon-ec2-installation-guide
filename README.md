@@ -1,5 +1,7 @@
 # Oracle Database 26ai on Amazon EC2
 
+<img width="1188" height="766" alt="Screenshot 2026-02-04 at 11 10 52 AM" src="https://github.com/user-attachments/assets/4276d58c-669b-433f-a3de-ffefe087fdb4" />
+
 This repository documents a **step-by-step installation guide for Oracle Database 26ai on Amazon EC2**, following an on‑prem–style deployment model with AWS best practices for compute, storage, networking, and licensing.
 
 The approach is suitable for **Enterprise licensed environments** as well as **Oracle Database 26ai Free** for labs and proofs of concept.

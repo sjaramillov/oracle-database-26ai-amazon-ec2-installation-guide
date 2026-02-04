@@ -246,6 +246,9 @@ sqlplus sys@<ec2-hostname>:1521/<service_name> as sysdba
 
 ## 11. CloudFormation Automation
 
+<img width="1170" height="357" alt="Screenshot 2026-02-04 at 6 23 30 PM" src="https://github.com/user-attachments/assets/1eaebba1-8cc6-4e88-8132-078a70a09882" />
+
+
 - Deploy the CloudFormation stack defined in **oracle-26ai-ec2-improved.yaml**.
 
 ---

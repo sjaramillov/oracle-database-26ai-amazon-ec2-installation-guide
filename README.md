@@ -244,6 +244,12 @@ sqlplus sys@<ec2-hostname>:1521/<service_name> as sysdba
 
 ---
 
+## 11. Automatization with Cloud Formation
+
+- Create Cloud Formation stack from YAML: **oracle-26ai-ec2-improved.yaml**
+
+---
+
 ## Next Steps
 
 Possible extensions:

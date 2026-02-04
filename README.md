@@ -232,6 +232,9 @@ sqlplus sys@<ec2-hostname>:1521/<service_name> as sysdba
 
 ## 10. Recommended Architecture Summary
 
+![OracleOnEC2-Pattern-1-1 (1)](https://github.com/user-attachments/assets/d154990f-9501-4ff0-b4f8-8e720e026795)
+
+
 - Dedicated EC2 instance
 - Oracle Linux 9
 - Oracle Database 26ai (CDB + PDB)

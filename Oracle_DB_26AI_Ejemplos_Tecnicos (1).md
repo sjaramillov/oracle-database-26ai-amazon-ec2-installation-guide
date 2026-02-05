@@ -2421,7 +2421,7 @@ FROM v$archive_gap;
 
 Debido a la complejidad de RAC en AWS, Oracle recomienda considerar alternativas:
 - Data Guard con Fast-Start Failover (más simple)
-- Oracle Autonomous Database en OCI (managed service)
+- Oracle Autonomous Database en OCI (managed service) o Database@AWS como Exadata y Autonomous.
 
 ### 2.3 Backup y Recuperación con RMAN
 

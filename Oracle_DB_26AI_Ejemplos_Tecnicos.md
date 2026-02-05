@@ -1,5 +1,5 @@
 # EJEMPLOS TÉCNICOS DE CÓDIGO
-# Oracle Database 26 AI para Banca en Colombia - AWS EC2
+# Oracle Database 26 AI para Banca en Latinoamerica - AWS EC2
 
 Este documento contiene todos los ejemplos de código SQL/PL/SQL con documentación técnica detallada, organizados por tema.
 

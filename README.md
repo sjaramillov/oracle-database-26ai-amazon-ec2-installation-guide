@@ -1,4 +1,4 @@
-# Oracle Database 26ai on Amazon EC2
+# Oracle AI Database 26ai Free on Amazon EC2
 
 <img width="1188" height="766" alt="Screenshot 2026-02-04 at 11 10 52 AM" src="https://github.com/user-attachments/assets/4276d58c-669b-433f-a3de-ffefe087fdb4" />
 
